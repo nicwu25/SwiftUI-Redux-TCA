@@ -6,110 +6,72 @@
 //
 
 import SwiftUI
-import Combine
-
-class Settings: ObservableObject {
-
-    enum AccountBehavior: CaseIterable {
-        case register, login
-    }
-
-    enum Sorting: CaseIterable {
-        case id, name, color, favorite
-    }
-    
-    private var disposeBag = Set<AnyCancellable>()
-
-    @Published var accountBehavior = AccountBehavior.login
-    @Published var email = ""
-    @Published var password = ""
-    @Published var verifyPassword = ""
-
-    @Published var showEnglishName = true
-    @Published var sorting = Sorting.id
-    @Published var showFavoriteOnly = false
-    
-    @Published var loginUser: User?
-    @Published var loginRequesting = false
-    @Published var loginError: AppError?
-    
-    func login() {
-        
-        guard !loginRequesting else { return }
-        
-        loginRequesting = true
-        
-        LoginRequest(email: email, password: password).publisher
-            .sink { [weak self] complete in
-                if case .failure(let error) = complete {
-                    self?.loginError = error
-                    self?.loginRequesting = false
-                }
-            } receiveValue: { [weak self] user in
-                self?.loginUser = user
-                self?.loginRequesting = false
-            }.store(in: &disposeBag)
-    }
-}
+import ComposableArchitecture
 
 struct SettingView: View {
     
-    @ObservedObject var settings = Settings()
+    let store: Store<SettingState, SettingAction>
     
     var body: some View {
-        Form {
-            accountSection
-            optionSection
-            actionSection
-        }
-        .alert(item: $settings.loginError) { error in
-            Alert(title: Text(error.localizedDescription))
+        WithViewStore(store) { viewStore in
+            Form {
+                accountSection
+                optionSection
+                actionSection
+            }
+            .alert(item: viewStore.binding(\.$loginError)) { error in
+                Alert(title: Text(error.localizedDescription))
+            }
         }
     }
 
     var accountSection: some View {
-        Section(header: Text("账户")) {
-            if settings.loginUser == nil {
-                Picker(selection: $settings.accountBehavior, label: Text("")) {
-                    ForEach(Settings.AccountBehavior.allCases, id: \.self) {
-                        Text($0.text)
+        WithViewStore(store) { viewStore in
+            Section(header: Text("账户")) {
+                if viewStore.loginUser == nil {
+                    Picker(selection: viewStore.binding(\.$accountBehavior), label: Text("")) {
+                        ForEach(SettingState.AccountBehavior.allCases, id: \.self) {
+                            Text($0.text)
+                        }
                     }
-                }
-                .pickerStyle(SegmentedPickerStyle())
-                TextField("电子邮箱", text: $settings.email)
-                SecureField("密码", text: $settings.password)
-                if settings.accountBehavior == .register {
-                    SecureField("确认密码", text: $settings.verifyPassword)
-                }
-                if settings.loginRequesting {
-                    Text("登陸中...")
+                    .pickerStyle(SegmentedPickerStyle())
+                    TextField("电子邮箱", text: viewStore.binding(\.$email))
+                    SecureField("密码", text: viewStore.binding(\.$password))
+                    if viewStore.accountBehavior == .register {
+                        SecureField("确认密码", text: viewStore.binding(\.$verifyPassword))
+                    }
+                    if viewStore.loginRequesting {
+                        Text("登陸中...")
+                    } else {
+                        Button(viewStore.accountBehavior.text) {
+                            print("登录/注册")
+                            viewStore.send(.login(email: viewStore.email, password: viewStore.password))
+                        }
+                    }
                 } else {
-                    Button(settings.accountBehavior.text) {
-                        print("登录/注册")
-                        settings.login()
+                    Text(viewStore.loginUser!.email)
+                    Button("注销") {
+                        print("注销")
                     }
-                }
-            } else {
-                Text(settings.loginUser!.email)
-                Button("注销") {
-                    print("注销")
                 }
             }
         }
     }
 
     var optionSection: some View {
-        Section(header: Text("选项")) {
-            Toggle(isOn: $settings.showEnglishName) {
-                Text("显示英文名")
-            }
-            Picker(selection: $settings.sorting, label: Text("排序方式")) {
-                ForEach(Settings.Sorting.allCases, id: \.self) {
-                    Text($0.text)
+        WithViewStore(store) { viewStore in
+            Section(header: Text("选项")) {
+                Toggle(isOn: viewStore.binding(\.$showEnglishName)) {
+                    Text("显示英文名")
                 }
-            }
-            Toggle(isOn: $settings.showFavoriteOnly) {
-                Text("只显示收藏")
+                Picker(selection: viewStore.binding(\.$sorting), label: Text("排序方式")) {
+                    ForEach(SettingState.Sorting.allCases, id: \.self) {
+                        Text($0.text)
+                    }
+                }
+                Toggle(isOn: viewStore.binding(\.$showFavoriteOnly)) {
+                    Text("只显示收藏")
+                }
             }
         }
     }
@@ -125,7 +87,7 @@ struct SettingView: View {
     }
 }
 
-extension Settings.Sorting {
+extension SettingState.Sorting {
     var text: String {
         switch self {
         case .id: return "ID"
@@ -136,7 +98,7 @@ extension Settings.Sorting {
     }
 }
 
-extension Settings.AccountBehavior {
+extension SettingState.AccountBehavior {
     var text: String {
         switch self {
         case .register: return "注册"
@@ -147,6 +109,7 @@ extension Settings.AccountBehavior {
 
 struct SettingView_Previews: PreviewProvider {
     static var previews: some View {
-        SettingView()
+        let store = Store(initialState: .init(), reducer: settingReducer, environment: SettingEnvironment())
+        SettingView(store: store)
     }
 }

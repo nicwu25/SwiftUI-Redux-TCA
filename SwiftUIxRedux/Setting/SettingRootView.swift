@@ -6,11 +6,15 @@
 //
 
 import SwiftUI
+import ComposableArchitecture
 
 struct SettingRootView: View {
     var body: some View {
         NavigationView {
-            SettingView().navigationBarTitle("设置")
+            SettingView(store: Store(initialState: SettingState(),
+                                     reducer: settingReducer,
+                                     environment: SettingEnvironment()))
+                .navigationBarTitle("设置")
         }
     }
 }
